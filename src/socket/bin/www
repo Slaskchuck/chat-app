@@ -1,0 +1,118 @@
+#!/usr/bin/env node
+
+const app = require('../server'),
+  debug = require('debug')('express:server'),
+  http = require('http'),
+  socketIo = require('socket.io'),
+  { MongoClient } = require('mongodb'),
+  redisAdapter = require('socket.io-redis'),
+  axios = require('axios')
+
+app.set('port', nconf.get('port'))
+const server = http.createServer(app)
+
+server.listen(nconf.get('port'))
+server.on('error', (error) => {
+  if (error.syscall !== 'listen')
+    throw error
+
+  const bind = typeof nconf.get('port') === 'string' ? `Pipe ${nconf.get('port')}` : `Port ${nconf.get('port')}`
+
+  switch (error.code) {
+    case 'EACCES':
+      console.error(`${bind} requires elevated privileges`)
+      process.exit(1)
+      break;
+    case 'EADDRINUSE':
+      console.error(`${bind} is already in use`)
+      process.exit(1)
+      break;
+    default:
+      throw error
+  }
+})
+server.on('listening', () => {
+  const addr = server.address()
+  const bind = typeof addr === 'string' ? `pipe ${addr}` : `port ${addr.port}`
+  debug(`Listening on ${bind}`)
+  logger.info(`API is ready and running in ${bind}`)
+})
+
+process.on('beforeExit', () => {
+  mongo.close()
+})
+
+const io = socketIo(server)
+
+const database = nconf.get('database')
+const replicateUrl = database.containers.reduce((previous, current) => {
+  const loginCred = current.user ? `${current.user}:${current.password}@` : ''
+  if (!previous)
+    return `${loginCred}${current.host}:${current.port}`
+
+  return `${previous},${loginCred}${current.host}:${current.port}`
+}, '')
+
+const connection = new MongoClient(
+  `mongodb://${replicateUrl}?replicateSet=${database.replicateSet}`,
+  {
+    useUnifiedTopology: true
+  }
+)
+
+const databasePromise = new Promise((resolve) => {
+  connection.connect((err, client) => {
+    if (err) throw err
+
+    if (client) return resolve(client.db(database.database))
+  })
+})
+
+const socketPromise = new Promise((resolve) => {
+  const redis = nconf.get('redis')
+  io.adapter(redisAdapter({
+    host: redis.host,
+    port: redis.port
+  }))
+
+  io.use(async (socket, next) => {
+    const token = socket.handshake.query.token
+
+    if (!token) {
+      next(new Error({ status: 401, detail: 'Unauthorized' }))
+      socket.disconnect(true)
+      return 
+    }
+
+    const apiService = axios.create({
+      baseURL: nconf.get('services').api,
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+    })
+
+    try {
+      await apiService.get('user/token')
+    } catch (err) {
+      next(err)
+      socket.disconnect(true)
+      return
+    }
+
+    return next()
+  })
+
+  io.on('connection', () => {
+    return resolve(io)
+  })
+})
+
+Promise.all([databasePromise, socketPromise])
+  .then(async (connections) => {
+    const watcherFiles = await fs.promises.readdir('./app/watcher')
+    watcherFiles.map((watcher) => {
+      const [database, io] = connections
+
+      return (require(`../app/watcher/${watcher}`)(database, io))
+    })
+  })

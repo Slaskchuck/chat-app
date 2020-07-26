@@ -1,0 +1,35 @@
+{
+    "port": 3999,
+    "authentication": {
+      "authenticate": true,
+      "saltRounds": 10,
+      "publicRoutes": [
+        "/user/login"
+      ]
+    },
+    "database": {
+      "containers": [
+        {
+          "host": "database-master",
+          "port": "27017"
+        },
+        {
+          "host": "database-slave-1",
+          "port": "27017"
+        },
+        {
+          "host": "database-slave-2",
+          "port": "27017"
+        }
+      ],
+      "replicateSet": "rs0",
+      "database": "chat"
+    },
+    "redis": {
+      "host": "redis",
+      "port": 6379
+    },
+    "services": {
+      "api": "http://api:4999"
+    }
+  }

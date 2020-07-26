@@ -1,0 +1,39 @@
+#!/usr/bin/env node
+
+const app = require('../server'),
+  debug = require('debug')('express:server'),
+  http = require('http')
+
+app.set('port', nconf.get('port'))
+const server = http.createServer(app)
+
+server.listen(nconf.get('port'))
+server.on('error', (error) => {
+  if (error.syscall !== 'listen')
+    throw error
+
+  const bind = typeof nconf.get('port') === 'string' ? `Pipe ${nconf.get('port')}` : `Port ${nconf.get('port')}`
+
+  switch (error.code) {
+    case 'EACCES':
+      console.error(`${bind} requires elevated privileges`)
+      process.exit(1)
+      break;
+    case 'EADDRINUSE':
+      console.error(`${bind} is already in use`)
+      process.exit(1)
+      break;
+    default:
+      throw error
+  }
+})
+server.on('listening', () => {
+  const addr = server.address()
+  const bind = typeof addr === 'string' ? `pipe ${addr}` : `port ${addr.port}`
+  debug(`Listening on ${bind}`)
+  logger.info(`API is ready and running in ${bind}`)
+})
+
+process.on('beforeExit', () => {
+  mongo.close()
+})

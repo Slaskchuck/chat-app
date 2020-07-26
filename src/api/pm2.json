@@ -1,0 +1,13 @@
+{
+  "name": "api",
+  "script": "bin/www",
+  "watch": [
+    "server.js",
+    "config/",
+    "app/",
+    "bin/"
+  ],
+  "env": {
+    "NODE_ENV": "development"
+  }
+}

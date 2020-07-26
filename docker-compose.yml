@@ -1,0 +1,119 @@
+version: '3'
+
+networks:
+  public:
+  private:
+    internal: true
+    driver: bridge
+  database:
+    internal: true
+    driver: bridge
+  redis:
+    internal: true
+    driver: bridge
+
+volumes:
+  master-database:
+  slave1-datbase:
+  slave2-database:
+
+services:
+  redis:
+    image: redis
+    container_name: chat-redis
+    networks:
+      - redis
+  webserver:
+    image: nginx
+    container_name: chat-webserver
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+    ports:
+      - "8080:8080"
+      - "4999:4999"
+      - "3999:3999"
+    depends_on:
+      - web
+      - api
+      - socket
+    networks:
+      - public
+      - private
+  database-master:
+    image: mongo
+    container_name: chat-database-master
+    env_file:
+      - docker/env/database
+      - docker/env/database-master
+    command: bash /root/mongo-start-sh
+    depends_on:
+      - database-slave-1
+      - database-slave-2
+    volumes:
+      - master-database:/data/db
+      - "./docker/mongo-start.sh:/root/mongo-start-sh"
+    networks:
+      - database
+  database-slave-1:
+    image: mongo
+    container_name: chat-database-slave-1
+    env_file:
+      - docker/env/database
+    command: bash /root/mongo-start-sh
+    volumes:
+      - slave1-datbase:/data/db
+      - "./docker/mongo-start.sh:/root/mongo-start-sh"
+    networks:
+      - database
+  database-slave-2:
+    image: mongo
+    container_name: chat-database-slave-2
+    env_file:
+      - docker/env/database
+    command: bash /root/mongo-start-sh
+    volumes:
+      - slave2-database:/data/db
+      - "./docker/mongo-start.sh:/root/mongo-start-sh"
+    networks:
+      - database
+  api:
+    build:
+      context: ./src/api
+      dockerfile: Dockerfile
+    container_name: chat-api
+    depends_on:
+      - database-master
+    volumes:
+      - "./src/api:/src"
+      - /src/node_modules
+    networks:
+      - private
+      - database
+  socket:
+    build:
+      context: ./src/socket
+      dockerfile: Dockerfile
+    container_name: chat-socket
+    depends_on:
+      - database-master
+      - redis
+    volumes:
+      - "./src/socket:/src"
+      - /src/node_modules
+    networks:
+      - private
+      - database
+      - redis
+  web:
+    build:
+      context: ./src/web
+      dockerfile: Dockerfile
+    container_name: chat-web
+    depends_on:
+        - api
+    tty: true
+    volumes:
+      - "./src/web:/src"
+      - /src/node_modules
+    networks:
+      - private

@@ -1,0 +1,3 @@
+ROLE=database-master
+SLAVE1=database-slave-1
+SLAVE2=database-slave-2
